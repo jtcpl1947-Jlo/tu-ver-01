@@ -12,14 +12,18 @@ import 'driver_home.dart';
 const kOther = '__other__';
 
 class DieselForm extends StatefulWidget {
-  final TruckChoice truck;
   final String? dutyId;
-  const DieselForm({super.key, required this.truck, this.dutyId});
+  const DieselForm({super.key, this.dutyId});
   @override
   State<DieselForm> createState() => _DieselFormState();
 }
 
 class _DieselFormState extends State<DieselForm> {
+  // Own truck by default; Temporary (typed number) is for diesel entries only.
+  String _type = Session.ownTruck.isEmpty ? 'temp' : 'own';
+  final _temp = TextEditingController();
+  bool? _tempInList;
+  String _lastFor = '';
   String _mode = 'scan';
   String? _pump;
   final _other = TextEditingController();
@@ -37,12 +41,38 @@ class _DieselFormState extends State<DieselForm> {
   String? _scanMsg;
   List<String> _pumps = [];
 
+  /// The truck this entry is for, or null if the typed number is not valid yet.
+  TruckChoice? get _truck {
+    if (_type == 'own') return Session.ownTruck.isEmpty ? null : TruckChoice(Session.ownTruck, 'own', true);
+    final n = normTruck(_temp.text);
+    return validTruck(n) ? TruckChoice(n, 'temp', _tempInList ?? false) : null;
+  }
+
+  /// Loads the last odometer reading (and list check) for the selected truck.
+  Future<void> _refreshTruck() async {
+    final t = _truck;
+    final key = t == null ? '' : '${t.type}:${t.number}';
+    if (key == _lastFor) return;
+    _lastFor = key;
+    setState(() {
+      _last = null;
+      if (_type == 'temp') _tempInList = null;
+    });
+    if (t == null) return;
+    final km = await lastKm(t.number);
+    bool? inList;
+    if (t.type == 'temp') inList = (await db.collection('trucks').doc(t.number).get()).exists;
+    if (!mounted || _lastFor != key) return;
+    setState(() {
+      _last = km;
+      if (t.type == 'temp') _tempInList = inList;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
-    lastKm(widget.truck.number).then((v) {
-      if (mounted) setState(() => _last = v);
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshTruck());
   }
 
   Future<void> _scan() async {
@@ -97,8 +127,14 @@ class _DieselFormState extends State<DieselForm> {
 
   Future<void> _save() async {
     final l = parseNum(_litres.text), r = parseNum(_rate.text), a = parseNum(_amount.text), km = parseNum(_km.text);
+    final truck = _truck;
     String? err;
-    if (_pump == null || (_pump == kOther && _other.text.trim().isEmpty)) err = bi('पंप चुनें या नाम लिखें', 'Choose a pump or type its name');
+    if (truck == null) {
+      err = _type == 'own'
+          ? bi('Admin ने आपकी गाड़ी नहीं जोड़ी है। Temporary चुनें।', 'No own truck assigned. Choose Temporary.')
+          : bi('सही गाड़ी नंबर लिखें, जैसे HR 55 AB 1234', 'Enter a valid vehicle number, e.g. HR 55 AB 1234');
+    }
+    if (_pump == null || (_pump == kOther && _other.text.trim().isEmpty)) err ??= bi('पंप चुनें या नाम लिखें', 'Choose a pump or type its name');
     if (l == null || l <= 0) err ??= bi('लीटर लिखें', 'Enter litres');
     if (r == null || r <= 0) err ??= bi('रेट लिखें', 'Enter rate');
     if (a == null || a <= 0) err ??= bi('रकम लिखें', 'Enter amount');
@@ -109,13 +145,14 @@ class _DieselFormState extends State<DieselForm> {
     if (_slip == null) err ??= bi('स्लिप की फ़ोटो लें', 'Take the slip photo');
     if (_meter == null) err ??= bi('मीटर की फ़ोटो लें', 'Take the meter photo');
     if (err != null) return snack(context, err, error: true);
+    final tr = truck!;
 
     final t = _tally();
     final flags = <String>[
       if (!t.amountOk) 'amount_mismatch',
       if (!t.milOk) 'mileage_unusual',
       if (_pump == kOther) 'pump_other',
-      if (widget.truck.type == 'temp' && !widget.truck.inList) 'temp_not_in_list',
+      if (tr.type == 'temp' && !tr.inList) 'temp_not_in_list',
     ];
     setState(() => _busy = true);
     try {
@@ -128,10 +165,10 @@ class _DieselFormState extends State<DieselForm> {
         'driverId': Session.driverId,
         'driverName': Session.name,
         'uid': Session.uid,
-        'dutyId': widget.dutyId,
-        'truck': widget.truck.number,
-        'truckType': widget.truck.type,
-        'inList': widget.truck.inList,
+        'dutyId': tr.type == 'own' ? widget.dutyId : null,
+        'truck': tr.number,
+        'truckType': tr.type,
+        'inList': tr.inList,
         'pump': _pump == kOther ? _other.text.trim() : _pump,
         'pumpOther': _pump == kOther,
         'slipNo': _slipNo.text.trim(),
@@ -153,7 +190,7 @@ class _DieselFormState extends State<DieselForm> {
         'status': 'pending',
         'createdAt': Timestamp.fromDate(now),
       });
-      setLastKm(b, widget.truck.number, km!);
+      setLastKm(b, tr.number, km!);
       await b.commit();
       if (mounted) {
         snack(context, bi('सेव हुआ। Admin मंज़ूरी देगा।', 'Saved. Sent to Admin for approval.'));
@@ -168,11 +205,43 @@ class _DieselFormState extends State<DieselForm> {
 
   @override
   Widget build(BuildContext context) {
-    final t = widget.truck;
+    final t = _truck;
     final tally = _tally();
     return Scaffold(
-      appBar: topBar(bi('डीज़ल एंट्री', 'Diesel entry'), sub: '${prettyTruck(t.number)} · ${t.type == 'own' ? 'Own' : 'Temp'}'),
+      appBar: topBar(bi('डीज़ल एंट्री', 'Diesel entry'),
+          sub: t == null ? null : '${prettyTruck(t.number)} · ${t.type == 'own' ? 'Own' : 'Temp'}'),
       body: PageBody(children: [
+        Label(bi('किस गाड़ी में डीज़ल?', 'Diesel for which truck?')),
+        SegmentedButton<String>(
+          segments: [
+            ButtonSegment(
+                value: 'own',
+                enabled: Session.ownTruck.isNotEmpty,
+                label: Text(Session.ownTruck.isEmpty ? 'Own' : '${bi('मेरी', 'Own')} ${prettyTruck(Session.ownTruck)}')),
+            const ButtonSegment(value: 'temp', label: Text('Temporary')),
+          ],
+          selected: {_type},
+          showSelectedIcon: false,
+          onSelectionChanged: (v) {
+            setState(() => _type = v.first);
+            _refreshTruck();
+          },
+        ),
+        if (_type == 'temp') ...[
+          TextField(
+            controller: _temp,
+            textCapitalization: TextCapitalization.characters,
+            style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w700, letterSpacing: 1),
+            decoration: inDec(bi('गाड़ी नंबर', 'Temporary vehicle number'), hint: 'UP 14 LT 5281'),
+            onChanged: (_) => _refreshTruck(),
+          ),
+          if (_tempInList == true)
+            Text(bi('✓ JTCPL list में है', '✓ Found in JTCPL vehicle list'),
+                style: const TextStyle(color: Color(0xFF14532D), fontWeight: FontWeight.w600, fontSize: 13)),
+          if (_tempInList == false)
+            Text(bi('यह नंबर JTCPL list में नहीं है। Admin को दिखेगा।', 'Not in the JTCPL list. Admin will be told.'),
+                style: const TextStyle(color: cAmber, fontWeight: FontWeight.w600, fontSize: 13)),
+        ],
         SegmentedButton<String>(
           segments: [
             ButtonSegment(value: 'scan', label: Text(bi('स्लिप स्कैन', 'Scan slip'))),

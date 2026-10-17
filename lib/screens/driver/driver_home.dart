@@ -24,10 +24,6 @@ class DriverHome extends StatefulWidget {
 }
 
 class _DriverHomeState extends State<DriverHome> {
-  String _type = 'own';
-  final _temp = TextEditingController();
-  bool? _tempInList;
-  String _checked = '';
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get _openDuty => db
       .collection('duties')
@@ -35,33 +31,13 @@ class _DriverHomeState extends State<DriverHome> {
       .where('status', isEqualTo: 'open')
       .snapshots();
 
-  Future<void> _checkTemp() async {
-    final n = normTruck(_temp.text);
-    if (!validTruck(n)) {
-      setState(() => _tempInList = null);
-      return;
-    }
-    if (n == _checked) return;
-    _checked = n;
-    final d = await db.collection('trucks').doc(n).get();
-    if (mounted && _checked == n) setState(() => _tempInList = d.exists);
-  }
-
-  /// Returns the selected truck, or null after showing why it is not ready.
-  TruckChoice? _selected() {
-    if (_type == 'own') {
-      if (Session.ownTruck.isEmpty) {
-        snack(context, bi('Admin ने आपकी गाड़ी नहीं जोड़ी है। Temporary चुनें।', 'Admin has not assigned your own truck. Choose Temporary.'), error: true);
-        return null;
-      }
-      return TruckChoice(Session.ownTruck, 'own', true);
-    }
-    final n = normTruck(_temp.text);
-    if (!validTruck(n)) {
-      snack(context, bi('सही गाड़ी नंबर लिखें, जैसे HR 55 AB 1234', 'Enter a valid vehicle number, e.g. HR 55 AB 1234'), error: true);
+  /// Duty is always on the driver's own truck (from Admin).
+  TruckChoice? _ownTruck() {
+    if (Session.ownTruck.isEmpty) {
+      snack(context, bi('Admin ने आपकी गाड़ी नहीं जोड़ी है। Admin से कहें।', 'Admin has not assigned your own truck. Ask Admin.'), error: true);
       return null;
     }
-    return TruckChoice(n, 'temp', _tempInList ?? false);
+    return TruckChoice(Session.ownTruck, 'own', true);
   }
 
   String _resumedFor = '';
@@ -114,45 +90,32 @@ class _DriverHomeState extends State<DriverHome> {
 
   List<Widget> _offDuty() {
     return [
-      Label(bi('आज कौन सी गाड़ी?', 'Which truck today?')),
-      _truckOption(
-        'own',
-        Session.ownTruck.isEmpty ? bi('गाड़ी नहीं जुड़ी', 'Not assigned') : prettyTruck(Session.ownTruck),
-        bi('मेरी गाड़ी', 'Own truck (from Admin)'),
-        const Pill('Own', tone: Tone.ok),
+      Box(
+        padding: const EdgeInsets.all(14),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(bi('मेरी गाड़ी', 'My truck'), style: const TextStyle(fontSize: 13, color: cMuted)),
+              Text(Session.ownTruck.isEmpty ? bi('गाड़ी नहीं जुड़ी', 'Not assigned') : prettyTruck(Session.ownTruck),
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, letterSpacing: 1)),
+            ]),
+          ),
+          const Pill('Own', tone: Tone.ok),
+        ]),
       ),
-      _truckOption('temp', 'Temporary', bi('दूसरी गाड़ी · गाड़ी नंबर लिखें', 'Type the vehicle number'),
-          const Pill('Temp', tone: Tone.warn)),
-      if (_type == 'temp') ...[
-        TextField(
-          controller: _temp,
-          textCapitalization: TextCapitalization.characters,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: 1),
-          decoration: inDec(bi('गाड़ी नंबर', 'Temporary vehicle number'), hint: 'RJ 14 GC 5521'),
-          onChanged: (_) => _checkTemp(),
-        ),
-        if (_tempInList == true)
-          Text(bi('✓ JTCPL list में है', '✓ Found in JTCPL vehicle list'),
-              style: const TextStyle(color: Color(0xFF14532D), fontWeight: FontWeight.w600, fontSize: 13)),
-        if (_tempInList == false)
-          Text(bi('यह नंबर JTCPL list में नहीं है। Admin को दिखेगा।', 'Not in the JTCPL list. Admin will be told.'),
-              style: const TextStyle(color: cAmber, fontWeight: FontWeight.w600, fontSize: 13)),
-      ],
       BigButton(
         appLang.value == 'hi' ? 'ड्यूटी शुरू करें' : 'Start duty',
         sub: bi('GPS शुरू होगा', 'GPS starts'),
         color: cGreen,
         onPressed: () {
-          final t = _selected();
+          final t = _ownTruck();
           if (t != null) Navigator.push(context, MaterialPageRoute(builder: (_) => DutyStart(truck: t)));
         },
       ),
       Row(children: [
         Expanded(
-          child: _square(Icons.local_gas_station_outlined, bi('डीज़ल भरें', 'Add diesel'), () {
-            final t = _selected();
-            if (t != null) Navigator.push(context, MaterialPageRoute(builder: (_) => DieselForm(truck: t)));
-          }),
+          child: _square(Icons.local_gas_station_outlined, bi('डीज़ल भरें', 'Add diesel'),
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DieselForm()))),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -189,7 +152,7 @@ class _DriverHomeState extends State<DriverHome> {
       Row(children: [
         Expanded(
           child: _square(Icons.local_gas_station_outlined, bi('डीज़ल भरें', 'Add diesel'),
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => DieselForm(truck: truck, dutyId: open.id)))),
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => DieselForm(dutyId: open.id)))),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -206,33 +169,6 @@ class _DriverHomeState extends State<DriverHome> {
         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DutyEnd(dutyId: open.id, duty: d))),
       ),
     ];
-  }
-
-  Widget _truckOption(String value, String title, String sub, Widget pill) {
-    final on = _type == value;
-    return Material(
-      color: on ? cBlueBg : Colors.white,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14), side: BorderSide(color: on ? cBlue : cLine, width: on ? 2 : 1.5)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => setState(() => _type = value),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(children: [
-            Icon(on ? Icons.radio_button_checked : Icons.radio_button_off, color: on ? cBlue : cField),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, letterSpacing: .5)),
-                Text(sub, style: const TextStyle(fontSize: 12.5, color: cMuted)),
-              ]),
-            ),
-            pill,
-          ]),
-        ),
-      ),
-    );
   }
 
   Widget _square(IconData icon, String label, VoidCallback onTap) => Material(
