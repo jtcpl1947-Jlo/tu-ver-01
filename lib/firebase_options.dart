@@ -11,18 +11,19 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REPLACE_API_KEY',
-    appId: 'REPLACE_WEB_APP_ID',
-    messagingSenderId: 'REPLACE_SENDER_ID',
+    apiKey: 'AIzaSyAokTnIzZ2ghS5vktwsTpPgfDyOCn8fXE8',
+    appId: '1:333923879905:web:9fb8885e1dfe48bd6e60a0',
+    messagingSenderId: '333923879905',
     projectId: 'jagdamba-logistics',
     authDomain: 'jagdamba-logistics.firebaseapp.com',
     storageBucket: 'jagdamba-logistics.firebasestorage.app',
+    measurementId: 'G-CCDRNN5HLT',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REPLACE_API_KEY',
-    appId: 'REPLACE_ANDROID_APP_ID',
-    messagingSenderId: 'REPLACE_SENDER_ID',
+    apiKey: 'AIzaSyAokTnIzZ2ghS5vktwsTpPgfDyOCn8fXE8',
+    appId: '1:333923879905:web:9fb8885e1dfe48bd6e60a0' /* TODO: Android app ID */,
+    messagingSenderId: '333923879905',
     projectId: 'jagdamba-logistics',
     storageBucket: 'jagdamba-logistics.firebasestorage.app',
   );
