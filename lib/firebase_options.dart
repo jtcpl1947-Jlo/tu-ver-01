@@ -22,7 +22,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyAokTnIzZ2ghS5vktwsTpPgfDyOCn8fXE8',
-    appId: '1:333923879905:web:9fb8885e1dfe48bd6e60a0' /* TODO: Android app ID */,
+    appId: '1:333923879905:android:7e62c70ed91078b76e60a0',
     messagingSenderId: '333923879905',
     projectId: 'jagdamba-logistics',
     storageBucket: 'jagdamba-logistics.firebasestorage.app',
