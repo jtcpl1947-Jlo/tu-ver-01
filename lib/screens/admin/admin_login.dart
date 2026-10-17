@@ -28,8 +28,13 @@ class _AdminLoginState extends State<AdminLogin> {
     super.initState();
     db.collection('config').doc('setup').get().then((d) {
       if (mounted) setState(() => _setupDone = d.exists);
-    }).catchError((_) {
-      if (mounted) setState(() => _setupDone = true);
+    }).catchError((Object e) {
+      if (mounted) {
+        setState(() {
+          _setupDone = true;
+          _err = 'Could not reach the database: ${friendlyError(e)}';
+        });
+      }
     });
   }
 
@@ -67,7 +72,7 @@ class _AdminLoginState extends State<AdminLogin> {
       final auth = FirebaseAuth.instanceFor(app: app);
       final cred = await auth.createUserWithEmailAndPassword(email: _email.text.trim(), password: _pass.text);
       final uid = cred.user!.uid;
-      final fs = FirebaseFirestore.instanceFor(app: app);
+      final fs = FirebaseFirestore.instanceFor(app: app, databaseId: kDatabaseId);
       final b = fs.batch();
       b.set(fs.collection('accounts').doc(uid), {
         'role': 'admin',

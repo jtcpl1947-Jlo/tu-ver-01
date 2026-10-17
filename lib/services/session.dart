@@ -4,7 +4,10 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../firebase_options.dart';
 
-final FirebaseFirestore db = FirebaseFirestore.instance;
+/// The Firestore database for this project is named "default" (not the usual "(default)").
+const kDatabaseId = 'default';
+
+final FirebaseFirestore db = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: kDatabaseId);
 
 /// Who is logged in.
 ///
