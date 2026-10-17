@@ -1,0 +1,70 @@
+name: Build TU Ver 01
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create Android and web folders
+        run: |
+          flutter create --platforms=android,web --org com.jtcpl --project-name tuver01 .
+          rm -rf test
+          bash tool/patch_android.sh
+
+      - name: Get packages
+        run: flutter pub get
+
+      - name: Check code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Build website (desktop testing)
+        run: flutter build web --release --base-href /tu-ver-01/
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tu-ver-01-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload website
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

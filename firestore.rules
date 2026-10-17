@@ -1,0 +1,83 @@
+rules_version = '2';
+
+// TU Ver 01 — paste into Firebase console → Firestore Database → Rules → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function accPath() { return /databases/$(database)/documents/accounts/$(request.auth.uid); }
+    function hasAcc() { return signedIn() && exists(accPath()); }
+    function acc() { return get(accPath()).data; }
+    function isAdmin() { return hasAcc() && acc().role == 'admin' && acc().active == true; }
+    function isStaff() { return hasAcc() && acc().role in ['admin', 'manager'] && acc().active == true; }
+    function isDriver() { return hasAcc() && acc().role == 'driver' && acc().active == true; }
+    function myDriverId() { return acc().driverId; }
+    function setupDone() { return exists(/databases/$(database)/documents/config/setup); }
+
+    // Created once, together with the first Admin.
+    match /config/setup {
+      allow read: if true;
+      allow create: if signedIn() && !setupDone()
+        && getAfter(accPath()).data.role == 'admin';
+    }
+
+    match /accounts/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isStaff());
+      allow create: if isAdmin()
+        || (signedIn() && request.auth.uid == uid && !setupDone()
+            && request.resource.data.role == 'admin');
+      allow update, delete: if isAdmin();
+    }
+
+    match /users/{driverId} {
+      allow read: if isStaff() || (isDriver() && myDriverId() == driverId);
+      allow write: if isAdmin();
+    }
+
+    match /pins/{pin} {
+      allow read, write: if isAdmin();
+    }
+
+    match /trucks/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /pumps/{id} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /odometer/{truck} {
+      allow read: if signedIn();
+      allow write: if isDriver() || isAdmin();
+    }
+
+    match /photos/{id} {
+      allow read: if isStaff() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if (isDriver() || isStaff()) && request.resource.data.uid == request.auth.uid;
+    }
+
+    match /duties/{id} {
+      allow read: if isStaff() || (isDriver() && resource.data.driverId == myDriverId());
+      allow create: if isDriver() && request.resource.data.driverId == myDriverId()
+        && request.resource.data.status == 'open';
+      allow update: if isAdmin() || (isDriver() && resource.data.driverId == myDriverId()
+        && request.resource.data.driverId == myDriverId());
+    }
+
+    match /diesel/{id} {
+      allow read: if isStaff() || (isDriver() && resource.data.driverId == myDriverId());
+      allow create: if isDriver() && request.resource.data.driverId == myDriverId()
+        && request.resource.data.status == 'pending';
+      allow update: if isAdmin();
+    }
+
+    // One document per driver per day: {driverId}_{yyyyMMdd}
+    match /tracks/{tid} {
+      allow read: if isStaff() || (isDriver() && tid.matches(myDriverId() + '_[0-9]{8}'));
+      allow write: if isDriver() && tid.matches(myDriverId() + '_[0-9]{8}')
+        && request.resource.data.driverId == myDriverId();
+    }
+  }
+}
