@@ -35,3 +35,13 @@ fi
 
 grep -n "uses-permission\|android:label" "$M" | head -20
 grep -rn "minSdk" android/app/build.gradle* || true
+
+# ML Kit text recognition: optional language packs we don't ship (Latin script only).
+if [ -d android/app ]; then
+  cat > android/app/proguard-rules.pro <<'PRO'
+-dontwarn com.google.mlkit.vision.text.chinese.**
+-dontwarn com.google.mlkit.vision.text.devanagari.**
+-dontwarn com.google.mlkit.vision.text.japanese.**
+-dontwarn com.google.mlkit.vision.text.korean.**
+PRO
+fi
