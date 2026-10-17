@@ -15,52 +15,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
           cache: true
-
-      - name: Create Android and web folders
+      - name: Create web folder
         run: |
-          flutter create --platforms=android,web --org com.jtcpl --project-name tuver01 .
+          flutter create --platforms=web --org com.jtcpl --project-name tuver01 .
           rm -rf test
-          bash tool/patch_android.sh
-
-      - name: Get packages
-        run: flutter pub get
-
+          bash tool/patch_android.sh || true
+      - run: flutter pub get
       - name: Check code
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
-
       - name: Build website (desktop testing)
         run: flutter build web --release --base-href /tu-ver-01/
-
-      - name: Build Android APK
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: tu-ver-01-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload website
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: build/web
 
   deploy:
-    needs: build
+    needs: web
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -68,3 +46,37 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Create Android folder
+        run: |
+          flutter create --platforms=android --org com.jtcpl --project-name tuver01 .
+          rm -rf test
+          bash tool/patch_android.sh
+      - run: flutter pub get
+      - name: Build Android APK
+        shell: bash
+        run: |
+          set +e
+          flutter build apk --release 2>&1 | tee apk.log
+          code=${PIPESTATUS[0]}
+          if [ $code -ne 0 ]; then
+            msg=$(grep -iE "error|what went wrong|failed|exception|e: |> " apk.log | grep -viE "^\s*$" | tail -40 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=APK build::${msg}"
+          fi
+          exit $code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tu-ver-01-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
