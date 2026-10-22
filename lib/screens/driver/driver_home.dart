@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -24,6 +26,23 @@ class DriverHome extends StatefulWidget {
 }
 
 class _DriverHomeState extends State<DriverHome> {
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _profileSub;
+
+  /// Picks up truck changes made by Admin while the app is open.
+  @override
+  void initState() {
+    super.initState();
+    _profileSub = db.collection('users').doc(Session.driverId).snapshots().listen((d) {
+      final t = (d.data()?['ownTruck'] ?? '') as String;
+      if (t != Session.ownTruck && mounted) setState(() => Session.ownTruck = t);
+    }, onError: (_) {});
+  }
+
+  @override
+  void dispose() {
+    _profileSub?.cancel();
+    super.dispose();
+  }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> get _openDuty => db
       .collection('duties')
